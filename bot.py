@@ -15,37 +15,47 @@ import random
 
 user = "stupow@gmail.com"
 server = "gmail.com"
+
 accepted_user = "stuart.powers@gmail.com" #only accept commands from this user
-password = getpass.getpass("password? ")
+output_root = "/var/www/sente/htdocs/xmpp-bot/data"
+
 
 
 def cmd(str):
-        s = subprocess.Popen(str, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
-        stdout,stderr = s.communicate()
-        return stdout, stderr
+    """
+    execute `str` as a subprocess.Popen piped command, return a tuple of (stdout,stdout)
+    """
+    s = subprocess.Popen(str, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+    stdout,stderr = s.communicate()
+    return stdout, stderr
 
 
 def execute_cmd(cmd_string="",foo=""):
+    """
+    execute the `cmd_string`, saving both `stdout` and `stdout`
+    and then return `(stdout, stderr,)`
+    """
+
     stdout,stderr = cmd(cmd_string)
 
     if stdout or stderr:
-        os.mkdir("/var/www/sente/htdocs/xmpp-bot/data/" + foo)
+        output_dir = os.path.join(output_root, foo)
+        os.mkdir(output_dir)
 
         if stdout:
-            with open("/var/www/sente/htdocs/xmpp-bot/data/" + foo + "/stdout", "w") as handle:
+            with open("%s/%s/stdout" % (output_root, foo), "w") as handle:
                 handle.write(stdout)
-
         if stderr:
-            with open("/var/www/sente/htdocs/xmpp-bot/data/" + foo + "/stderr", "w") as handle:
+            with open("%s/%s/stderr" % (output_root, foo), "w") as handle:
                 handle.write(stderr)
 
     return (stdout, stderr,)
 
 
 def message_handler(connect_object, message_node):
+
     from_user = message_node.getFrom().getStripped()
 
-    print from_user
     if not from_user.startswith(accepted_user):
         connect_object.send( xmpp.Message( message_node.getFrom(), "not authorized"))
 
@@ -55,39 +65,23 @@ def message_handler(connect_object, message_node):
 
     message,message_stderr = execute_cmd(cmd_string=command, foo=foo)
 
-    if message:
+    if message or message_stderr:
         size=len(message)
         lines=len(message.split("\n"))
         stderr_size=len(message_stderr)
 
-        url= "http://www.sente.cc/xmpp-bot/data/%s/stdout" % foo
+        stdout_url= "http://www.sente.cc/xmpp-bot/data/%s/stdout" % foo
+        stderr_url= "http://www.sente.cc/xmpp-bot/data/%s/stderr" % foo
 
-        summary = "%d bytes %d lines %d stderr" % (size, lines, stderr_size)
-        tail = "full response %s" % url
-        if len(message_stderr) >  0:
-            tail=tail + "\nand stderr: %s" % url.replace("stdout","stderr")
-
-        if lines > 20:
-            message_jabber="\n".join(message.splitlines()[0:10])
-            connect_object.send( xmpp.Message( message_node.getFrom(), summary))
-            connect_object.Process(0)
-            connect_object.send( xmpp.Message( message_node.getFrom(), message_jabber))
-            connect_object.Process(0)
-            connect_object.send( xmpp.Message( message_node.getFrom(), tail))
-        else:
-            connect_object.send( xmpp.Message( message_node.getFrom(), summary))
-            connect_object.Process(0)
-            connect_object.send( xmpp.Message( message_node.getFrom(), message))
-            connect_object.Process(0)
-            connect_object.send( xmpp.Message( message_node.getFrom(), tail))
-
-    elif message_stderr:
-        connect_object.send( xmpp.Message( message_node.getFrom() ,message_stderr))
+        summary = "%s %d bytes\n%s %d bytes" % (stdout_url, len(message), stderr_url, len(message_stderr))
+        connect_object.send( xmpp.Message(message_node.getFrom(), summary) )
     else:
-        connect_object.send( xmpp.Message( message_node.getFrom(),"no output"))
+        connect_object.Process(0)
 
 
 if __name__ == '__main__':
+
+    password = getpass.getpass("password? ")
     jid = xmpp.JID(user)
     connection = xmpp.Client(server)
     connection.connect()
